@@ -1,4 +1,3 @@
-
 import os
 import requests
 from bs4 import BeautifulSoup
@@ -8,10 +7,9 @@ from typing import List, Optional
 class ImageCrawler:
     def __init__(self, save_dir: str = "downloaded_images"):
         """
-        初始化图片爬虫
+        Initialize the ImageCrawler with a directory for saving downloaded images.
         
-        Args:
-            save_dir: 保存图片的目录路径
+        Creates the save directory if it does not already exist.
         """
         self.save_dir = save_dir
         self.headers = {
@@ -23,13 +21,10 @@ class ImageCrawler:
 
     def get_page_content(self, url: str) -> Optional[str]:
         """
-        获取页面HTML内容
+        Fetches the HTML content of the specified webpage URL.
         
-        Args:
-            url: 目标网页URL
-            
         Returns:
-            str: 页面HTML内容 或 None（失败时）
+            The HTML content as a string if the request is successful; otherwise, returns None.
         """
         try:
             response = requests.get(url, headers=self.headers, timeout=10)
@@ -41,14 +36,14 @@ class ImageCrawler:
 
     def extract_image_urls(self, url: str, html_content: str) -> List[str]:
         """
-        提取页面中的所有图片URL
+        Extracts all image URLs from the provided HTML content, converting relative paths to absolute URLs based on the given page URL.
         
-        Args:
-            url: 当前页面URL
-            html_content: 页面HTML内容
-            
+        Parameters:
+            url (str): The base URL of the page, used to resolve relative image paths.
+            html_content (str): The HTML content to parse for image sources.
+        
         Returns:
-            List[str]: 图片URL列表
+            List[str]: A list of absolute image URLs found in the HTML content.
         """
         soup = BeautifulSoup(html_content, 'html.parser')
         img_urls = []
@@ -64,14 +59,14 @@ class ImageCrawler:
 
     def download_image(self, img_url: str, filename: str) -> bool:
         """
-        下载并保存图片
+        Download an image from the specified URL and save it to the designated filename in the save directory.
         
-        Args:
-            img_url: 图片URL
-            filename: 保存的文件名
-            
+        Parameters:
+            img_url (str): The URL of the image to download.
+            filename (str): The name to use when saving the downloaded image file.
+        
         Returns:
-            bool: 下载成功返回True，否则返回False
+            bool: True if the image was downloaded and saved successfully; False otherwise.
         """
         try:
             response = requests.get(img_url, headers=self.headers, timeout=10)
@@ -93,13 +88,13 @@ class ImageCrawler:
 
     def crawl(self, url: str) -> List[str]:
         """
-        执行图片爬取任务
+        Crawls the specified webpage URL, downloads all found images, and returns the list of successfully saved filenames.
         
-        Args:
-            url: 目标网页URL
-            
+        Parameters:
+            url (str): The target webpage URL to crawl for images.
+        
         Returns:
-            List[str]: 成功下载的图片文件名列表
+            List[str]: Filenames of images that were successfully downloaded and saved.
         """
         # 获取页面内容
         html_content = self.get_page_content(url)
