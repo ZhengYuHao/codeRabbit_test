@@ -1,81 +1,137 @@
 
-async def e(text: str, doc_type: str) -> Dict[str, Any]:
-    if doc_type == '专利':
-        prompt = f"""
-        从以下专利文本中提取信息：
-        {text[:5000]}
+import os
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+from typing import List, Optional
 
-        请提取：
-        1. 专利号
-        2. 申请日期（YYYY-MM-DD）
-        3. 授权日期（如无则写N/A）
-        4. 发明人（逗号分隔）
-        5. 受让人（公司/机构）
-
-        返回 JSON 格式。
+class ImageCrawler:
+    def __init__(self, save_dir: str = "downloaded_images"):
         """
-    if doc_type == '论文':
-        prompt = f"""
-            请从以下论文文本中精确提取信息：
-            {text[:5000]}
+        初始化图片爬虫
+        
+        Args:
+            save_dir: 保存图片的目录路径
+        """
+        self.save_dir = save_dir
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        
+        # 创建保存目录
+        os.makedirs(self.save_dir, exist_ok=True)
 
-            要求返回严格JSON格式，包含以下字段：
-            1. 标题（必须提取）
-            2. 作者（分号分隔，如"张三; 李四; 王五"）
-            3. 期刊/会议名称（完整名称）
-            4. 发表年份（YYYY，必须从文本中提取）
-            5. DOI（完整格式，如"10.1002/ajh.27272"，若无则写N/A）
-            6. received_date（收稿日期，YYYY-MM-DD格式）
-            7. accepted_date（接受日期，YYYY-MM-DD格式）
-            8. published_date（出版日期，YYYY-MM-DD格式）
+    def get_page_content(self, url: str) -> Optional[str]:
+        """
+        获取页面HTML内容
+        
+        Args:
+            url: 目标网页URL
+            
+        Returns:
+            str: 页面HTML内容 或 None（失败时）
+        """
+        try:
+            response = requests.get(url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+            return response.text
+        except requests.RequestException as e:
+            print(f"获取页面失败: {e}")
+            return None
 
-            特别注意：
-            - 日期格式示例：Received:4December2023 → received_date: "2023-12-04"
-            - 必须包含所有8个字段，没有的字段写N/A
-            - 年份优先从出版日期提取，其次接受日期，最后收稿日期
+    def extract_image_urls(self, url: str, html_content: str) -> List[str]:
+        """
+        提取页面中的所有图片URL
+        
+        Args:
+            url: 当前页面URL
+            html_content: 页面HTML内容
+            
+        Returns:
+            List[str]: 图片URL列表
+        """
+        soup = BeautifulSoup(html_content, 'html.parser')
+        img_urls = []
+        
+        for img_tag in soup.find_all('img'):
+            src = img_tag.get('src')
+            if src:
+                # 将相对路径转换为绝对URL
+                absolute_url = urljoin(url, src)
+                img_urls.append(absolute_url)
+                
+        return img_urls
 
-            示例格式：
-            {{
-              "标题": "Report of IRF2BP1 as a novel partner of RARA in variant acute promyelocytic leukemia",
-              "作者": "Jiang Bin; Zhang San; Li Si",
-              "期刊": "American Journal of Hematology",
-              "year": 2024,
-              "DOI": "10.1002/ajh.27272",
-              "received_date": "2023-12-04",
-              "accepted_date": "2024-02-18",
-              "published_date": "2024-03-01"
-            }}
-            """
+    def download_image(self, img_url: str, filename: str) -> bool:
+        """
+        下载并保存图片
+        
+        Args:
+            img_url: 图片URL
+            filename: 保存的文件名
+            
+        Returns:
+            bool: 下载成功返回True，否则返回False
+        """
+        try:
+            response = requests.get(img_url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+            
+            # 确定文件保存路径
+            file_path = os.path.join(self.save_dir, filename)
+            
+            # 写入文件
+            with open(file_path, 'wb') as f:
+                f.write(response.content)
+                
+            print(f"已保存: {file_path}")
+            return True
+            
+        except requests.RequestException as e:
+            print(f"下载失败: {img_url} - {e}")
+            return False
 
-    role = "你是一个信息提取专家"
-    api_key = get_llm_key()
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
-    url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-    data = {
-        'model': "qwen-plus",
-        'messages': [
-            {"role": "system", "content": "你是一个文档分类专家"},
-            {"role": "user", "content": prompt}
-        ],
-    }
-    response = await send_async_request(url, headers, data)
-    content = response['choices'][0]['message']['content']
-    if content.startswith("```json"):
-        content = content.strip("```json").strip("```")
-    result = json.loads(content)
-    # print("提取结果:", result)
-
-    # 确保所有字段存在
-    if doc_type == '论文':
-        required_fields = [
-            '标题', '作者', '期刊', 'year',
-            'DOI', 'received_date', 'accepted_date', 'published_date'
-        ]
-        for field in required_fields:
-            if field not in result:
-                result[field] = "N/A"
-
-    return result
+    def crawl(self, url: str) -> List[str]:
+        """
+        执行图片爬取任务
+        
+        Args:
+            url: 目标网页URL
+            
+        Returns:
+            List[str]: 成功下载的图片文件名列表
+        """
+        # 获取页面内容
+        html_content = self.get_page_content(url)
+        if not html_content:
+            return []
+            
+        # 提取图片URL
+        img_urls = self.extract_image_urls(url, html_content)
+        if not img_urls:
+            print("未找到图片")
+            return []
+            
+        # 下载所有图片
+        downloaded_files = []
+        for i, img_url in enumerate(img_urls):
+            # 生成文件名
+            ext = os.path.splitext(img_url)[1] or '.jpg'
+            filename = f"image_{i+1}{ext}"
+            
+            # 下载图片
+            if self.download_image(img_url, filename):
+                downloaded_files.append(filename)
+                
+        return downloaded_files
+    # 示例用法
+if __name__ == "__main__":
+    crawler = ImageCrawler()  # 可指定保存目录 ImageCrawler(save_dir="my_images")
+    
+    # 预留的URL接口调用
+    target_url = "https://haowallpaper.com/"  # 替换为实际目标网址
+    downloaded = crawler.crawl(target_url)
+    
+    print(f"成功下载 {len(downloaded)} 张图片:")
+    for filename in downloaded:
+        print(f"- {filename}")
